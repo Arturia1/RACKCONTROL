@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getSheetsInstance, SHEET_ID } from "@/lib/googleSheets"; // Removido RANGE_NAME
+import { getSheetsInstance, SHEET_ID } from "@/lib/googleSheets";
 
 export async function PATCH(
   request: NextRequest,
@@ -8,27 +8,27 @@ export async function PATCH(
   try {
     const { id } = await params;
     const rowIndex = parseInt(id);
-
-    if (isNaN(rowIndex)) {
-       return NextResponse.json({ error: "ID inválido" }, { status: 400 });
-    }
-
     const sheets = await getSheetsInstance();
 
-    // Atualiza a Coluna K (STATUS) para "FINALIZADO"
-    // Note que usamos o nome da aba diretamente aqui
+    const dataTermino = new Date().toLocaleString('pt-BR');
+
+    // Atualiza Coluna K (STATUS) para FINALIZADO e Coluna N (TÉRMINO)
     await sheets.spreadsheets.values.update({
       spreadsheetId: SHEET_ID,
-      range: `Página1!K${rowIndex}`, 
+      range: `RACKS!K${rowIndex}:N${rowIndex}`, 
       valueInputOption: "USER_ENTERED",
       requestBody: {
-        values: [["FINALIZADO"]],
+        values: [[
+          "FINALIZADO", // K
+          "",           // L (Pula)
+          "",           // M (Pula)
+          dataTermino   // N (Data Término)
+        ]],
       },
     });
 
-    return NextResponse.json({ message: "Atendimento finalizado!" });
+    return NextResponse.json({ message: "Finalizado!" });
   } catch (error: any) {
-    console.error("Erro ao finalizar:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

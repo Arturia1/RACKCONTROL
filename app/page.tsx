@@ -2,238 +2,227 @@
 
 import { useState, useEffect } from "react";
 
-export default function DashboardRacks() {
-  const [racks, setRacks] = useState<any[]>([]);
-  const [filtro, setFiltro] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [statusMessage, setStatusMessage] = useState("");
-  const [darkMode, setDarkMode] = useState(false);
+export default function Home() {
+  // Estados do Formulário
+  const [rack, setRack] = useState("");
+  const [chamado, setChamado] = useState("");
+  const [tecnico, setTecnico] = useState(""); // Técnico CATI (Solicitante)
+  const [isManutencao, setIsManutencao] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  const [form, setForm] = useState({
-    rackNome: "",
-    tecnico: "",
-    tecnicoCati: "",
-    chamado: "",
-    manutencao: "Não",
-    dataAbertura: new Date().toISOString().split("T")[0],
-  });
+  // Estados da Lista
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loadingData, setLoadingData] = useState(true);
 
-  // 1. CARREGAR DADOS
-  const carregarDados = async () => {
+  // --- FUNÇÕES AUXILIARES (IGUAIS AO PATRIMÔNIO) ---
+  const normalizar = (str: string) => 
+    str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s/g, "") : "";
+
+  const buscarValor = (item: any, chavesPossiveis: string[]) => {
+    if (!item) return "";
+    const chavesItem = Object.keys(item);
+    for (const chave of chavesPossiveis) {
+      const chaveNorm = normalizar(chave);
+      const chaveReal = chavesItem.find(k => normalizar(k) === chaveNorm);
+      if (chaveReal && item[chaveReal]) return item[chaveReal];
+    }
+    return "";
+  };
+
+  // --- CARREGAR TICKETS ---
+  const fetchTickets = async () => {
     try {
-      const res = await fetch("/api/racks", { cache: 'no-store' });
+      const res = await fetch("/api/racks", { cache: "no-store" });
       const data = await res.json();
-      
       if (Array.isArray(data)) {
-        const abertos = data.filter((r: any) => 
-          r.STATUS && String(r.STATUS).trim().toUpperCase() === "ABERTO"
-        );
-        setRacks(abertos);
+        // Filtra para mostrar apenas AGUARDANDO ou ABERTO na tela inicial
+        // (Oculta os Finalizados para não poluir)
+        const ativos = data.filter((t: any) => {
+          const status = buscarValor(t, ['STATUS']);
+          const s = status ? status.toUpperCase().trim() : "";
+          return s === "AGUARDANDO" || s === "ABERTO";
+        }).reverse(); // Mais recentes primeiro
+        setTickets(ativos);
       }
     } catch (error) {
-      console.error("Erro ao carregar:", error);
+      console.error("Erro ao buscar tickets:", error);
+    } finally {
+      setLoadingData(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTickets();
+    const interval = setInterval(fetchTickets, 5000); // Atualiza a cada 5s
+    return () => clearInterval(interval);
+  }, []);
+
+  // --- ENVIAR NOVO TICKET ---
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rack || !chamado || !tecnico) {
+      alert("Preencha Rack, Chamado e Seu Nome.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await fetch("/api/racks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rackNome: rack,
+          chamado: chamado,
+          tecnico: tecnico, // Envia como Solicitante
+          manutencao: isManutencao ? "Sim" : "Não",
+        }),
+      });
+
+      if (res.ok) {
+        alert("✅ Chamado aberto com sucesso!");
+        setRack("");
+        setChamado("");
+        // Não limpamos o técnico para facilitar aberturas seguidas
+        setIsManutencao(false);
+        fetchTickets(); // Atualiza a lista na hora
+      } else {
+        alert("Erro ao abrir chamado.");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("Erro de conexão.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    carregarDados();
-    const interval = setInterval(carregarDados, 5000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // 2. ENVIAR DADOS
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setStatusMessage("Criando ticket...");
-    try {
-      const res = await fetch("/api/racks", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-
-      if (res.ok) {
-        setForm({ ...form, rackNome: "", tecnico: "", chamado: "", tecnicoCati: "", manutencao: "Não" });
-        setStatusMessage("✅ Ticket Criado!");
-        await carregarDados();
-        setTimeout(() => setStatusMessage(""), 3000);
-      } else {
-        setStatusMessage("❌ Erro no servidor.");
-      }
-    } catch (error) {
-      setStatusMessage("❌ Falha de conexão.");
-    }
-  };
-
-  // 3. FINALIZAR
-  const finalizar = async (id: number) => {
-    if (!confirm("Confirmar finalização do atendimento?")) return;
-    try {
-      const res = await fetch(`/api/racks/${id}`, { method: "PATCH" });
-      if (res.ok) await carregarDados();
-    } catch (error) {
-      alert("Erro ao finalizar.");
-    }
-  };
-
-  // 4. LÓGICA VISUAL
-  const racksFiltrados = racks.filter(r => {
-    const nomeRack = r['RACK'] || r['RACK SOLICITADO'] || "";
-    const numChamado = r['CHAMADOS ASSYST'] || r['CHAMADO'] || "";
-    const termo = filtro.toLowerCase();
-    return nomeRack.toLowerCase().includes(termo) || numChamado.toLowerCase().includes(termo);
-  });
-
-  const theme = {
-    bg: darkMode ? "bg-gray-950" : "bg-gray-100",
-    cardBg: darkMode ? "bg-gray-900 border-gray-800" : "bg-white border-gray-200",
-    textMain: darkMode ? "text-white" : "text-gray-900",
-    textSec: darkMode ? "text-gray-400" : "text-gray-500", 
-    textCard: darkMode ? "text-gray-200" : "text-gray-800",
-    inputBg: darkMode ? "bg-gray-800 border-gray-700 text-white" : "bg-white border-gray-300 text-gray-900",
-    mutedBg: darkMode ? "bg-gray-800" : "bg-gray-100",
-  };
-
   return (
-    <div className={`min-h-screen transition-colors duration-300 ${theme.bg} p-4 md:p-6 font-sans`}>
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-950 text-white font-sans p-6">
+      
+      {/* CABEÇALHO */}
+      <header className="max-w-4xl mx-auto mb-10 text-center border-b border-gray-800 pb-6">
+        <h1 className="text-4xl font-black tracking-tighter mb-2">
+          ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
+        </h1>
+        <p className="text-gray-400">Sistema de Controle de Racks - CATI</p>
+      </header>
+
+      <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
         
-        {/* HEADER */}
-        <header className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-          <div>
-            <h1 className={`text-3xl font-black tracking-tight ${theme.textMain}`}>
-              RACK<span className="text-blue-600">CONTROL</span>
-            </h1>
-            <p className={`font-bold text-sm ${theme.textSec}`}>Painel de Monitoramento</p>
-          </div>
-          <div className="flex gap-3 w-full md:w-auto">
-            <input 
-              type="text"
-              placeholder="Buscar Ticket..."
-              className={`flex-1 md:w-64 p-2.5 rounded-xl border-2 font-bold outline-none focus:border-blue-600 ${theme.inputBg}`}
-              onChange={(e) => setFiltro(e.target.value)}
-            />
-            <button onClick={() => setDarkMode(!darkMode)} className="px-4 py-2 rounded-xl bg-blue-600 text-white font-bold shadow-lg">
-              {darkMode ? "☀️" : "🌙"}
-            </button>
-          </div>
-        </header>
-
-        <div className="grid lg:grid-cols-12 gap-8">
+        {/* --- FORMULÁRIO DE ABERTURA --- */}
+        <section className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl h-fit">
+          <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
+            📝 Novo Ticket
+          </h2>
           
-          {/* LADO ESQUERDO: FORMULÁRIO */}
-          <section className={`lg:col-span-4 p-6 rounded-2xl shadow-xl h-fit border-2 ${theme.cardBg}`}>
-            <h2 className={`text-xl font-black mb-6 flex items-center ${theme.textMain}`}>
-              <span className="w-2 h-6 bg-blue-600 rounded-full mr-3"></span> Novo Ticket
-            </h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Rack (Ex: 50C1)</label>
+              <input
+                type="text"
+                value={rack}
+                onChange={(e) => setRack(e.target.value.toUpperCase())}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors font-bold text-lg"
+                placeholder="Nome do Rack"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className={`text-[10px] font-black uppercase ${theme.textSec}`}>Rack</label>
-                <input className={`w-full mt-1 p-3 border-2 rounded-xl font-black uppercase ${theme.inputBg}`} placeholder="Ex: 50C1" value={form.rackNome} onChange={(e) => setForm({ ...form, rackNome: e.target.value })} required />
-              </div>
-              <div>
-                <label className={`text-[10px] font-black uppercase ${theme.textSec}`}>Técnico Patrimônio</label>
-                <input className={`w-full mt-1 p-3 border-2 rounded-xl font-bold ${theme.inputBg}`} value={form.tecnico} onChange={(e) => setForm({ ...form, tecnico: e.target.value })} required />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                   <label className={`text-[10px] font-black uppercase ${theme.textSec}`}>Chamado</label>
-                   <input className={`w-full mt-1 p-3 border-2 rounded-xl font-bold ${theme.inputBg}`} value={form.chamado} onChange={(e) => setForm({ ...form, chamado: e.target.value })} required />
-                </div>
-                <div>
-                   <label className={`text-[10px] font-black uppercase ${theme.textSec}`}>Manutenção?</label>
-                   <select className={`w-full mt-1 p-3 border-2 rounded-xl font-bold ${theme.inputBg}`} value={form.manutencao} onChange={(e) => setForm({ ...form, manutencao: e.target.value })}>
-                    <option value="Não">Não</option>
-                    <option value="Sim">Sim</option>
-                  </select>
-                </div>
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Chamado Assyst</label>
+                <input
+                  type="text"
+                  value={chamado}
+                  onChange={(e) => setChamado(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors"
+                  placeholder="R000000"
+                />
               </div>
               <div>
-                <label className={`text-[10px] font-black uppercase ${theme.textSec}`}>Técnico CATI</label>
-                <input className={`w-full mt-1 p-3 border-2 rounded-xl font-bold ${theme.inputBg}`} value={form.tecnicoCati} onChange={(e) => setForm({ ...form, tecnicoCati: e.target.value })} required />
+                <label className="block text-xs font-bold text-gray-400 uppercase mb-1">Técnico (Você)</label>
+                <input
+                  type="text"
+                  value={tecnico}
+                  onChange={(e) => setTecnico(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors"
+                  placeholder="Seu Nome"
+                />
               </div>
-              
-              <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-black py-4 rounded-xl transition-all shadow-lg active:scale-95 uppercase tracking-wide">
-                ABRIR TICKET
-              </button>
-              {statusMessage && <p className="text-center text-sm font-bold mt-2 text-blue-500 animate-pulse">{statusMessage}</p>}
-            </form>
-          </section>
+            </div>
 
-          {/* LADO DIREITO: TICKETS ATIVOS */}
-          <section className="lg:col-span-8">
-            <h2 className={`text-xl font-black mb-6 flex items-center ${theme.textMain}`}>
-              <span className="w-2 h-6 bg-emerald-500 rounded-full mr-3"></span> Atendimentos Ativos
-              <span className="ml-3 bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-md font-bold">{racksFiltrados.length}</span>
-            </h2>
-
-            {loading ? <p className={theme.textMain}>Sincronizando tickets...</p> : racksFiltrados.length === 0 ? (
-              <div className={`p-12 text-center border-2 border-dashed rounded-2xl ${theme.cardBg} ${theme.textSec}`}>
-                <p className="text-lg font-bold">Nenhum ticket aberto.</p>
-                <p className="text-sm opacity-70">Novos registros aparecerão aqui automaticamente.</p>
+            <div className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg border border-gray-700 cursor-pointer" onClick={() => setIsManutencao(!isManutencao)}>
+              <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isManutencao ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
+                {isManutencao && <span className="text-white text-xs">✓</span>}
               </div>
-            ) : (
-              <div className="grid md:grid-cols-2 gap-4">
-                {racksFiltrados.map((rack) => {
-                  const nomeTecnico = rack['TÉCNICO PATR. QUE ABRIU O RACK'] || rack['TÉCNICO PATR. QUE ABRIU O RACK.'] || rack['TECNICO'] || "---";
-                  const nomeRack = rack['RACK'] || rack['RACK SOLICITADO'] || "---";
-                  const numChamado = rack['CHAMADOS ASSYST'] || rack['CHAMADO'] || "---";
-                  
-                  // Mapeia a nova coluna DATA ABERTURA vinda do Backend
-                  const dataAbertura = rack['DATA ABERTURA'] || rack['DATA DE ABERTURA DO RACK'] || rack['DATA'] || "";
-                  
-                  const isManutencao = String(nomeTecnico).includes("(Manutenção)");
-                  
-                  return (
-                    <div 
-                      key={rack.id} 
-                      className={`relative flex flex-col justify-between p-5 rounded-2xl border-l-8 shadow-sm hover:shadow-xl transition-all ${theme.cardBg} ${isManutencao ? 'border-orange-500' : 'border-blue-600'}`}
-                    >
-                      <div>
-                        <div className="flex justify-between items-start mb-4">
-                          <span className={`text-sm font-black text-white px-3 py-1 rounded-lg ${isManutencao ? 'bg-orange-500' : 'bg-blue-600'}`}>
-                            {nomeRack}
-                          </span>
-                          <span className={`text-xs font-bold px-2 py-1 rounded border ${darkMode ? 'bg-gray-800 text-gray-300 border-gray-700' : 'bg-gray-100 text-gray-600 border-gray-200'}`}>
-                            #{numChamado}
-                          </span>
-                        </div>
+              <span className="text-sm text-gray-300 font-medium">Acionar Manutenção Predial?</span>
+            </div>
 
-                        <div className="space-y-3 mb-6">
-                          <div>
-                             <p className={`text-[10px] uppercase font-black ${theme.textSec}`}>Solicitante (Patrimônio)</p>
-                             <p className={`text-sm font-black leading-tight ${theme.textCard}`}>{nomeTecnico}</p>
-                          </div>
-                          <div className="flex justify-between gap-2">
-                            <div>
-                               <p className={`text-[10px] uppercase font-black ${theme.textSec}`}>Técnico CATI</p>
-                               <p className={`text-sm font-bold ${theme.textCard}`}>{rack['TÉCNICO CATI'] || '-'}</p>
-                            </div>
-                            <div className="text-right">
-                               <p className={`text-[10px] uppercase font-black ${theme.textSec}`}>Entrada</p>
-                               <p className={`text-xs font-bold ${theme.textCard}`}>{dataAbertura}</p>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-blue-600 hover:bg-blue-500 text-white font-black uppercase py-4 rounded-xl shadow-lg shadow-blue-900/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+            >
+              {loading ? "Enviando..." : "ABRIR CHAMADO"}
+            </button>
+          </form>
+        </section>
 
-                      <button 
-                        onClick={() => finalizar(rack.id)} 
-                        className={`w-full py-3 rounded-xl font-black text-xs uppercase transition-colors ${darkMode ? 'bg-gray-800 text-white hover:bg-emerald-600' : 'bg-gray-50 text-gray-600 hover:bg-emerald-600 hover:text-white'}`}
-                      >
-                        Finalizar Atendimento
-                      </button>
+        {/* --- LISTA DE TICKETS ATIVOS --- */}
+        <section>
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-xl font-bold text-white">Chamados Recentes</h2>
+            <div className="text-xs font-bold bg-gray-800 px-2 py-1 rounded text-gray-400">
+              {tickets.length} Ativos
+            </div>
+          </div>
+
+          {loadingData ? (
+            <p className="text-center text-gray-500 animate-pulse">Carregando lista...</p>
+          ) : tickets.length === 0 ? (
+            <div className="text-center p-8 border-2 border-dashed border-gray-800 rounded-xl">
+              <p className="text-gray-500">Nenhum chamado pendente.</p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+              {tickets.map((t, i) => {
+                const status = buscarValor(t, ['STATUS']);
+                const rackNome = buscarValor(t, ['RACK']);
+                const tecnicoPatr = buscarValor(t, ['ATENDENTE', 'ATENDENTE PATRIMÔNIO']);
+                const hora = buscarValor(t, ['HORA ABERTURA', 'HORARIO', 'HORÁRIO DE ABERTURA']);
+                
+                // Define cor baseada no status
+                const isAguardando = status === "AGUARDANDO";
+                const borderClass = isAguardando ? "border-yellow-500" : "border-blue-500";
+                const bgBadge = isAguardando ? "bg-yellow-600" : "bg-blue-600";
+                const statusText = isAguardando ? "Aguardando Patrimônio" : "Em Atendimento";
+
+                return (
+                  <div key={i} className={`bg-gray-900 p-4 rounded-xl border-l-4 ${borderClass} shadow-md flex justify-between items-center`}>
+                    <div>
+                      <h3 className="text-2xl font-black text-white">{rackNome}</h3>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Aberto às {hora}
+                      </p>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </section>
+                    
+                    <div className="text-right">
+                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded text-white ${bgBadge}`}>
+                        {statusText}
+                      </span>
+                      {tecnicoPatr && !isAguardando && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          Por: {tecnicoPatr.split(' ')[0]}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
 
-        </div>
-      </div>
+      </main>
     </div>
   );
 }

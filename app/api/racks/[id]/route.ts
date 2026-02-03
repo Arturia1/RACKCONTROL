@@ -7,28 +7,48 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params;
+    const body = await request.json();
     const rowIndex = parseInt(id);
     const sheets = await getSheetsInstance();
 
-    const dataTermino = new Date().toLocaleString('pt-BR');
+    // AÇÃO 1: ACEITAR O CHAMADO
+    // Muda Status para ABERTO e preenche ATENDENTE (Coluna N)
+    if (body.action === 'aceitar') {
+      const tecnicoPatrimonio = body.tecnico || "Patrimônio";
+      
+      // Atualiza Colunas M (Status) e N (Atendente)
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `RACKS!M${rowIndex}:N${rowIndex}`,
+        valueInputOption: "USER_ENTERED",
+        requestBody: { values: [["ABERTO", tecnicoPatrimonio]] },
+      });
 
-    // Atualiza Coluna K (STATUS) para FINALIZADO e Coluna N (TÉRMINO)
-    await sheets.spreadsheets.values.update({
-      spreadsheetId: SHEET_ID,
-      range: `RACKS!K${rowIndex}:N${rowIndex}`, 
-      valueInputOption: "USER_ENTERED",
-      requestBody: {
-        values: [[
-          "FINALIZADO", // K
-          "",           // L (Pula)
-          "",           // M (Pula)
-          dataTermino   // N (Data Término)
-        ]],
-      },
-    });
+      return NextResponse.json({ message: "Atendimento iniciado!" });
+    }
 
-    return NextResponse.json({ message: "Finalizado!" });
+    // AÇÃO 2: FINALIZAR O CHAMADO
+    // Preenche Hora Fechamento (L) e Status (M)
+    else {
+      const horaFechamento = new Date().toLocaleTimeString('pt-BR');
+      
+      await sheets.spreadsheets.values.update({
+        spreadsheetId: SHEET_ID,
+        range: `RACKS!L${rowIndex}:M${rowIndex}`, 
+        valueInputOption: "USER_ENTERED",
+        requestBody: {
+          values: [[
+            horaFechamento, // Coluna L
+            "FINALIZADO"    // Coluna M
+          ]],
+        },
+      });
+
+      return NextResponse.json({ message: "Atendimento finalizado!" });
+    }
+
   } catch (error: any) {
+    console.error("Erro no PATCH:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

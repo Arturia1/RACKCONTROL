@@ -6,7 +6,7 @@ export default function Home() {
   // Estados do Formulário
   const [rack, setRack] = useState("");
   const [chamado, setChamado] = useState("");
-  const [tecnico, setTecnico] = useState(""); // Técnico CATI (Solicitante)
+  const [tecnico, setTecnico] = useState(""); 
   const [isManutencao, setIsManutencao] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -14,7 +14,7 @@ export default function Home() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
 
-  // --- FUNÇÕES AUXILIARES (IGUAIS AO PATRIMÔNIO) ---
+  // --- FUNÇÕES AUXILIARES ---
   const normalizar = (str: string) => 
     str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s/g, "") : "";
 
@@ -29,19 +29,30 @@ export default function Home() {
     return "";
   };
 
+  // --- A MESMA LÓGICA DE CORES DO PATRIMÔNIO ---
+  const getCorCSS = (corNome: string) => {
+    const mapa: any = {
+      "AMARELO": "bg-yellow-600 border-yellow-800 shadow-yellow-500/30",
+      "AZUL": "bg-blue-600 border-blue-800 shadow-blue-500/30",
+      "VERDE": "bg-green-600 border-green-800 shadow-green-500/30",
+      "VERMELHO": "bg-red-600 border-red-800 shadow-red-500/30",
+      "CINZA": "bg-gray-700 border-gray-900"
+    };
+    return mapa[corNome?.toUpperCase()] || mapa["CINZA"];
+  };
+
   // --- CARREGAR TICKETS ---
   const fetchTickets = async () => {
     try {
       const res = await fetch("/api/racks", { cache: "no-store" });
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Filtra para mostrar apenas AGUARDANDO ou ABERTO na tela inicial
-        // (Oculta os Finalizados para não poluir)
+        // Mostra AGUARDANDO e ABERTO (Oculta finalizados na home)
         const ativos = data.filter((t: any) => {
           const status = buscarValor(t, ['STATUS']);
           const s = status ? status.toUpperCase().trim() : "";
           return s === "AGUARDANDO" || s === "ABERTO";
-        }).reverse(); // Mais recentes primeiro
+        }).reverse(); 
         setTickets(ativos);
       }
     } catch (error) {
@@ -53,7 +64,7 @@ export default function Home() {
 
   useEffect(() => {
     fetchTickets();
-    const interval = setInterval(fetchTickets, 5000); // Atualiza a cada 5s
+    const interval = setInterval(fetchTickets, 5000); 
     return () => clearInterval(interval);
   }, []);
 
@@ -73,7 +84,7 @@ export default function Home() {
         body: JSON.stringify({
           rackNome: rack,
           chamado: chamado,
-          tecnico: tecnico, // Envia como Solicitante
+          tecnico: tecnico, 
           manutencao: isManutencao ? "Sim" : "Não",
         }),
       });
@@ -82,9 +93,8 @@ export default function Home() {
         alert("✅ Chamado aberto com sucesso!");
         setRack("");
         setChamado("");
-        // Não limpamos o técnico para facilitar aberturas seguidas
         setIsManutencao(false);
-        fetchTickets(); // Atualiza a lista na hora
+        fetchTickets(); 
       } else {
         alert("Erro ao abrir chamado.");
       }
@@ -99,7 +109,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-950 text-white font-sans p-6">
       
-      {/* CABEÇALHO */}
+      {/* CABEÇALHO (MANTIDO PERFEITO) */}
       <header className="max-w-4xl mx-auto mb-10 text-center border-b border-gray-800 pb-6">
         <h1 className="text-4xl font-black tracking-tighter mb-2">
           ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
@@ -109,7 +119,7 @@ export default function Home() {
 
       <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
         
-        {/* --- FORMULÁRIO DE ABERTURA --- */}
+        {/* --- FORMULÁRIO --- */}
         <section className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl h-fit">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
             📝 Novo Ticket
@@ -167,7 +177,7 @@ export default function Home() {
           </form>
         </section>
 
-        {/* --- LISTA DE TICKETS ATIVOS --- */}
+        {/* --- LISTA DE MINI TICKETS (AGORA COLORIDOS) --- */}
         <section>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-white">Chamados Recentes</h2>
@@ -183,36 +193,49 @@ export default function Home() {
               <p className="text-gray-500">Nenhum chamado pendente.</p>
             </div>
           ) : (
-            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
               {tickets.map((t, i) => {
                 const status = buscarValor(t, ['STATUS']);
                 const rackNome = buscarValor(t, ['RACK']);
+                const cor = buscarValor(t, ['COR']); // Pega a cor do Rack
+                const setor = buscarValor(t, ['SETORES', 'SETORES ATENDIDOS']);
                 const tecnicoPatr = buscarValor(t, ['ATENDENTE', 'ATENDENTE PATRIMÔNIO']);
                 const hora = buscarValor(t, ['HORA ABERTURA', 'HORARIO', 'HORÁRIO DE ABERTURA']);
                 
-                // Define cor baseada no status
-                const isAguardando = status === "AGUARDANDO";
-                const borderClass = isAguardando ? "border-yellow-500" : "border-blue-500";
-                const bgBadge = isAguardando ? "bg-yellow-600" : "bg-blue-600";
-                const statusText = isAguardando ? "Aguardando Patrimônio" : "Em Atendimento";
+                // Gera o CSS baseado na COR do rack (Amarelo, Azul, Verde...)
+                const corCSS = getCorCSS(cor); 
+                
+                const isAguardando = status?.toUpperCase().trim() === "AGUARDANDO";
+                const statusText = isAguardando ? "Aguardando" : "Em Atendimento";
 
                 return (
-                  <div key={i} className={`bg-gray-900 p-4 rounded-xl border-l-4 ${borderClass} shadow-md flex justify-between items-center`}>
+                  // APLICA A COR DO SETOR NO CARD INTEIRO
+                  <div key={i} className={`relative overflow-hidden rounded-xl border-l-[8px] shadow-lg ${corCSS} p-4 flex justify-between items-start transition-transform hover:scale-[1.02]`}>
+                    
                     <div>
-                      <h3 className="text-2xl font-black text-white">{rackNome}</h3>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <h3 className="text-3xl font-black text-white drop-shadow-md tracking-tighter">{rackNome}</h3>
+                      <p className="text-xs font-bold text-white/90 uppercase bg-black/20 p-1 rounded inline-block mt-1">
+                        {setor || "Carregando..."}
+                      </p>
+                      <p className="text-xs text-white/80 mt-2 font-mono">
                         Aberto às {hora}
                       </p>
                     </div>
                     
-                    <div className="text-right">
-                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded text-white ${bgBadge}`}>
+                    <div className="text-right flex flex-col items-end gap-1">
+                      {/* Badge de Status (Escuro para ler em qualquer cor) */}
+                      <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded text-white bg-black/40 border border-white/20`}>
                         {statusText}
                       </span>
+                      
+                      {/* Badge do Técnico */}
                       {tecnicoPatr && !isAguardando && (
-                        <p className="text-xs text-gray-400 mt-1">
-                          Por: {tecnicoPatr.split(' ')[0]}
-                        </p>
+                        <div className="mt-1">
+                          <span className="text-[9px] text-white/80 block">Atendente:</span>
+                          <span className="text-[10px] font-bold text-white bg-blue-900/80 px-2 py-0.5 rounded border border-blue-400/50">
+                             {tecnicoPatr.split(' ')[0]}
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>

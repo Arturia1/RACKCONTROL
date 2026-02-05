@@ -1,0 +1,49 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("POSTGRES_PRISMA_URL") // A Vercel vai preencher isso
+  directUrl = env("POSTGRES_URL_NON_POOLING") // A Vercel vai preencher isso
+}
+
+// --- USUÁRIOS ---
+model User {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  password  String
+  role      String   @default("SOLICITANTE") // ADMIN, TECNICO, CONSULTA, SOLICITANTE
+  createdAt DateTime @default(now())
+
+  @@map("users")
+}
+
+// --- TICKETS (Substitui a aba RACKS) ---
+model Ticket {
+  id            String   @id @default(cuid())
+  rackNome      String
+  chamado       String
+  solicitante   String   // Quem abriu (Técnico CATI)
+  manutencao    Boolean  @default(false)
+  status        String   @default("AGUARDANDO") // AGUARDANDO, ABERTO, FINALIZADO
+  atendente     String?  // Quem pegou (Técnico Patrimônio)
+  setor         String?  
+  
+  dataAbertura  DateTime @default(now())
+  dataFechamento DateTime?
+
+  @@map("tickets")
+}
+
+// --- LOGS ---
+model Log {
+  id        String   @id @default(cuid())
+  usuario   String
+  acao      String
+  detalhes  String
+  dataHora  DateTime @default(now())
+
+  @@map("logs")
+}

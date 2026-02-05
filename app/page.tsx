@@ -1,11 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession, signOut } from "next-auth/react"; // Importar signOut
 
 export default function Home() {
-  const { data: session } = useSession();
-
   // Estados do Formulário
   const [rack, setRack] = useState("");
   const [chamado, setChamado] = useState("");
@@ -16,13 +13,6 @@ export default function Home() {
   // Estados da Lista
   const [tickets, setTickets] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
-
-  // Preencher nome do técnico se logado
-  useEffect(() => {
-    if (session?.user?.name) {
-      setTecnico(session.user.name);
-    }
-  }, [session]);
 
   // --- FUNÇÕES AUXILIARES ---
   const normalizar = (str: string) => 
@@ -60,7 +50,7 @@ export default function Home() {
           const status = buscarValor(t, ['STATUS']);
           const s = status ? status.toUpperCase().trim() : "";
           return s === "AGUARDANDO" || s === "ABERTO";
-        }).reverse(); 
+        }); // Já vem invertido do backend
         setTickets(ativos);
       }
     } catch (error) {
@@ -102,7 +92,6 @@ export default function Home() {
         setRack("");
         setChamado("");
         setIsManutencao(false);
-        if (!session?.user?.name) setTecnico("");
         fetchTickets(); 
       } else {
         alert("Erro ao abrir chamado.");
@@ -117,32 +106,14 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white font-sans p-6">
-      
-      {/* CABEÇALHO COM LOGOUT */}
-      <header className="max-w-4xl mx-auto mb-10 border-b border-gray-800 pb-6 relative">
-        <div className="text-center">
-          <h1 className="text-4xl font-black tracking-tighter mb-2">
-            ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
-          </h1>
-          <p className="text-gray-400">Sistema de Controle de Racks - CATI</p>
-        </div>
-
-        {/* Botão de Sair (Posicionado no canto) */}
-        {session && (
-          <div className="absolute top-0 right-0 flex flex-col items-end gap-1">
-            <span className="text-[10px] text-gray-500 uppercase font-bold">Olá, {session.user?.name}</span>
-            <button 
-              onClick={() => signOut()}
-              className="text-xs bg-red-900/30 hover:bg-red-900 text-red-200 px-3 py-1 rounded transition-colors border border-red-900/50"
-            >
-              SAIR
-            </button>
-          </div>
-        )}
+      <header className="max-w-4xl mx-auto mb-10 text-center border-b border-gray-800 pb-6">
+        <h1 className="text-4xl font-black tracking-tighter mb-2">
+          ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
+        </h1>
+        <p className="text-gray-400">Sistema de Controle de Racks - CATI</p>
       </header>
 
       <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
-        
         {/* --- FORMULÁRIO --- */}
         <section className="bg-gray-900 border border-gray-800 p-6 rounded-2xl shadow-xl h-fit">
           <h2 className="text-xl font-bold text-white mb-6 flex items-center gap-2">
@@ -178,8 +149,7 @@ export default function Home() {
                   type="text"
                   value={tecnico}
                   onChange={(e) => setTecnico(e.target.value)}
-                  readOnly={!!session?.user?.name} 
-                  className={`w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors ${session?.user?.name ? 'opacity-70 cursor-not-allowed' : ''}`}
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors"
                   placeholder="Seu Nome"
                 />
               </div>
@@ -202,7 +172,7 @@ export default function Home() {
           </form>
         </section>
 
-        {/* --- LISTA DE MINI TICKETS --- */}
+        {/* --- LISTA DE TICKETS --- */}
         <section>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-white">Chamados Recentes</h2>
@@ -224,6 +194,7 @@ export default function Home() {
                 const rackNome = buscarValor(t, ['RACK']);
                 const cor = buscarValor(t, ['COR']); 
                 const setor = buscarValor(t, ['SETORES', 'SETORES ATENDIDOS']);
+                const nivel = buscarValor(t, ['NIVEL', 'ANDAR']); // NOVO CAMPO
                 const tecnicoPatr = buscarValor(t, ['ATENDENTE', 'ATENDENTE PATRIMÔNIO']);
                 const hora = buscarValor(t, ['HORA ABERTURA', 'HORARIO', 'HORÁRIO DE ABERTURA']);
                 
@@ -233,22 +204,28 @@ export default function Home() {
 
                 return (
                   <div key={i} className={`relative overflow-hidden rounded-xl border-l-[8px] shadow-lg ${corCSS} p-4 flex justify-between items-start transition-transform hover:scale-[1.02]`}>
-                    
                     <div>
                       <h3 className="text-3xl font-black text-white drop-shadow-md tracking-tighter">{rackNome}</h3>
-                      <p className="text-xs font-bold text-white/90 uppercase bg-black/20 p-1 rounded inline-block mt-1">
-                        {setor || "Carregando..."}
-                      </p>
+                      <div className="flex gap-2 mt-1">
+                        {/* SETOR */}
+                        <p className="text-xs font-bold text-white/90 uppercase bg-black/20 px-2 py-1 rounded inline-block">
+                          {setor || "..."}
+                        </p>
+                        {/* NÍVEL (NOVO) */}
+                        {nivel && nivel !== "-" && (
+                           <p className="text-xs font-bold text-white/90 uppercase bg-white/20 px-2 py-1 rounded inline-block">
+                             {nivel}
+                           </p>
+                        )}
+                      </div>
                       <p className="text-xs text-white/80 mt-2 font-mono">
                         Aberto às {hora}
                       </p>
                     </div>
-                    
                     <div className="text-right flex flex-col items-end gap-1">
                       <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded text-white bg-black/40 border border-white/20`}>
                         {statusText}
                       </span>
-                      
                       {tecnicoPatr && !isAguardando && (
                         <div className="mt-1">
                           <span className="text-[9px] text-white/80 block">Atendente:</span>
@@ -264,7 +241,6 @@ export default function Home() {
             </div>
           )}
         </section>
-
       </main>
     </div>
   );

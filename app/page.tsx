@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession, signOut } from "next-auth/react"; // Importar signOut
 
 export default function Home() {
+  const { data: session } = useSession();
+
   // Estados do Formulário
   const [rack, setRack] = useState("");
   const [chamado, setChamado] = useState("");
@@ -13,6 +16,13 @@ export default function Home() {
   // Estados da Lista
   const [tickets, setTickets] = useState<any[]>([]);
   const [loadingData, setLoadingData] = useState(true);
+
+  // Preencher nome do técnico se logado
+  useEffect(() => {
+    if (session?.user?.name) {
+      setTecnico(session.user.name);
+    }
+  }, [session]);
 
   // --- FUNÇÕES AUXILIARES ---
   const normalizar = (str: string) => 
@@ -29,7 +39,6 @@ export default function Home() {
     return "";
   };
 
-  // --- A MESMA LÓGICA DE CORES DO PATRIMÔNIO ---
   const getCorCSS = (corNome: string) => {
     const mapa: any = {
       "AMARELO": "bg-yellow-600 border-yellow-800 shadow-yellow-500/30",
@@ -47,7 +56,6 @@ export default function Home() {
       const res = await fetch("/api/racks", { cache: "no-store" });
       const data = await res.json();
       if (Array.isArray(data)) {
-        // Mostra AGUARDANDO e ABERTO (Oculta finalizados na home)
         const ativos = data.filter((t: any) => {
           const status = buscarValor(t, ['STATUS']);
           const s = status ? status.toUpperCase().trim() : "";
@@ -94,6 +102,7 @@ export default function Home() {
         setRack("");
         setChamado("");
         setIsManutencao(false);
+        if (!session?.user?.name) setTecnico("");
         fetchTickets(); 
       } else {
         alert("Erro ao abrir chamado.");
@@ -109,12 +118,27 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-950 text-white font-sans p-6">
       
-      {/* CABEÇALHO (MANTIDO PERFEITO) */}
-      <header className="max-w-4xl mx-auto mb-10 text-center border-b border-gray-800 pb-6">
-        <h1 className="text-4xl font-black tracking-tighter mb-2">
-          ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
-        </h1>
-        <p className="text-gray-400">Sistema de Controle de Racks - CATI</p>
+      {/* CABEÇALHO COM LOGOUT */}
+      <header className="max-w-4xl mx-auto mb-10 border-b border-gray-800 pb-6 relative">
+        <div className="text-center">
+          <h1 className="text-4xl font-black tracking-tighter mb-2">
+            ABERTURA DE <span className="text-blue-500">CHAMADOS</span>
+          </h1>
+          <p className="text-gray-400">Sistema de Controle de Racks - CATI</p>
+        </div>
+
+        {/* Botão de Sair (Posicionado no canto) */}
+        {session && (
+          <div className="absolute top-0 right-0 flex flex-col items-end gap-1">
+            <span className="text-[10px] text-gray-500 uppercase font-bold">Olá, {session.user?.name}</span>
+            <button 
+              onClick={() => signOut()}
+              className="text-xs bg-red-900/30 hover:bg-red-900 text-red-200 px-3 py-1 rounded transition-colors border border-red-900/50"
+            >
+              SAIR
+            </button>
+          </div>
+        )}
       </header>
 
       <main className="max-w-4xl mx-auto grid grid-cols-1 md:grid-cols-2 gap-10">
@@ -154,7 +178,8 @@ export default function Home() {
                   type="text"
                   value={tecnico}
                   onChange={(e) => setTecnico(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors"
+                  readOnly={!!session?.user?.name} 
+                  className={`w-full bg-gray-800 border border-gray-700 rounded-lg p-3 text-white focus:border-blue-500 focus:outline-none transition-colors ${session?.user?.name ? 'opacity-70 cursor-not-allowed' : ''}`}
                   placeholder="Seu Nome"
                 />
               </div>
@@ -177,7 +202,7 @@ export default function Home() {
           </form>
         </section>
 
-        {/* --- LISTA DE MINI TICKETS (AGORA COLORIDOS) --- */}
+        {/* --- LISTA DE MINI TICKETS --- */}
         <section>
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-bold text-white">Chamados Recentes</h2>
@@ -197,19 +222,16 @@ export default function Home() {
               {tickets.map((t, i) => {
                 const status = buscarValor(t, ['STATUS']);
                 const rackNome = buscarValor(t, ['RACK']);
-                const cor = buscarValor(t, ['COR']); // Pega a cor do Rack
+                const cor = buscarValor(t, ['COR']); 
                 const setor = buscarValor(t, ['SETORES', 'SETORES ATENDIDOS']);
                 const tecnicoPatr = buscarValor(t, ['ATENDENTE', 'ATENDENTE PATRIMÔNIO']);
                 const hora = buscarValor(t, ['HORA ABERTURA', 'HORARIO', 'HORÁRIO DE ABERTURA']);
                 
-                // Gera o CSS baseado na COR do rack (Amarelo, Azul, Verde...)
                 const corCSS = getCorCSS(cor); 
-                
                 const isAguardando = status?.toUpperCase().trim() === "AGUARDANDO";
                 const statusText = isAguardando ? "Aguardando" : "Em Atendimento";
 
                 return (
-                  // APLICA A COR DO SETOR NO CARD INTEIRO
                   <div key={i} className={`relative overflow-hidden rounded-xl border-l-[8px] shadow-lg ${corCSS} p-4 flex justify-between items-start transition-transform hover:scale-[1.02]`}>
                     
                     <div>
@@ -223,12 +245,10 @@ export default function Home() {
                     </div>
                     
                     <div className="text-right flex flex-col items-end gap-1">
-                      {/* Badge de Status (Escuro para ler em qualquer cor) */}
                       <span className={`text-[10px] font-bold uppercase px-2 py-1 rounded text-white bg-black/40 border border-white/20`}>
                         {statusText}
                       </span>
                       
-                      {/* Badge do Técnico */}
                       {tecnicoPatr && !isAguardando && (
                         <div className="mt-1">
                           <span className="text-[9px] text-white/80 block">Atendente:</span>

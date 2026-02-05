@@ -1,8 +1,21 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { useSession, signOut } from "next-auth/react"; // Autenticação
+import { useRouter } from "next/navigation";           // Redirecionamento
 
 export default function VisaoPatrimonio() {
+  // --- CONTROLE DE SESSÃO ---
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // Redireciona para login se não estiver autenticado
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/login");
+    }
+  }, [status, router]);
+
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -10,15 +23,15 @@ export default function VisaoPatrimonio() {
   const [inputTecnico, setInputTecnico] = useState("");
   const [processando, setProcessando] = useState(false);
 
+  // Estado para controlar a tela de troca de técnico no modal
+  const [modoTroca, setModoTroca] = useState(false);
+
   // --- CONTROLE DE NOTIFICAÇÕES ---
   const [showToast, setShowToast] = useState(false); 
   const prevAguardandoCount = useRef(0);
   const isFirstLoad = useRef(true);
   
-  // Referência para o player de áudio
   const audioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Som de Beep curto (Base64) - Funciona sem arquivo externo
   const SOM_BEEP = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
   // --- FUNÇÕES AUXILIARES ---
@@ -47,50 +60,33 @@ export default function VisaoPatrimonio() {
     return mapa[corNome?.toUpperCase()] || mapa["CINZA"];
   };
 
-  // --- CONFIGURAÇÃO DO ÁUDIO E PERMISSÕES ---
+  // --- CONFIGURAÇÃO DO ÁUDIO ---
   useEffect(() => {
-    // Carrega o som na memória assim que a tela abre
     audioRef.current = new Audio(SOM_BEEP);
     audioRef.current.volume = 1.0;
-
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   }, []);
 
-  // --- FUNÇÃO DE TESTE MANUAL ---
   const testarSomManual = () => {
     if (audioRef.current) {
       audioRef.current.play()
-        .then(() => console.log("Som tocou! Navegador liberado."))
-        .catch(e => alert("O navegador bloqueou o som. Tente clicar na página novamente. Erro: " + e.message));
+        .then(() => console.log("Som tocou!"))
+        .catch(e => alert("Som bloqueado pelo navegador. Clique na página."));
     }
   };
 
-  // --- LÓGICA DE ALERTA AUTOMÁTICO ---
   const dispararAlerta = (qtdNovos: number) => {
-    // 1. Toca Som
     if (audioRef.current) {
-      // Reinicia o som caso ele esteja tocando
       audioRef.current.currentTime = 0;
-      audioRef.current.play().catch(e => {
-        console.warn("Som automático bloqueado. Usuário precisa interagir.", e);
-      });
+      audioRef.current.play().catch(() => {});
     }
-
-    // 2. Notificação Visual
-    const isPageVisible = document.visibilityState === "visible";
-    
-    if (isPageVisible) {
+    if (document.visibilityState === "visible") {
       setShowToast(true);
       setTimeout(() => setShowToast(false), 5000);
-    } else {
-      if ("Notification" in window && Notification.permission === "granted") {
-        const notification = new Notification("🚨 Novo Chamado Patrimônio!", {
-          body: `Atenção: Existem ${qtdNovos} chamados aguardando.`,
-        });
-        notification.onclick = function() { window.focus(); this.close(); };
-      }
+    } else if ("Notification" in window && Notification.permission === "granted") {
+      new Notification("🚨 Novo Chamado!", { body: `${qtdNovos} chamados aguardando.` });
     }
   };
 
@@ -104,14 +100,12 @@ export default function VisaoPatrimonio() {
         const listaInvertida = data.reverse();
         setTickets(listaInvertida);
 
-        // Conta quantos estão aguardando
         const aguardandoAgora = listaInvertida.filter((t: any) => {
            const s = buscarValor(t, ['STATUS']);
            const r = buscarValor(t, ['RACK']);
            return r && s && s.toUpperCase().trim() === "AGUARDANDO";
         }).length;
 
-        // Se aumentou o número de tickets, dispara alerta
         if (!isFirstLoad.current && aguardandoAgora > prevAguardandoCount.current) {
            dispararAlerta(aguardandoAgora);
         }
@@ -125,45 +119,46 @@ export default function VisaoPatrimonio() {
     }
   };
 
+  // Só carrega dados se estiver autenticado
   useEffect(() => {
-    carregarDados();
-    const interval = setInterval(carregarDados, 5000);
-    return () => clearInterval(interval);
-  }, []);
+    if (status === "authenticated") {
+      carregarDados();
+      const interval = setInterval(carregarDados, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [status]);
 
-  // --- AÇÕES DO SISTEMA ---
-  const handleAceitar = async () => {
-    if (!inputTecnico.trim()) return alert("Por favor, digite seu nome (Técnico Patrimônio).");
+  // --- AÇÕES DO SISTEMA (UNIFICADA) ---
+  const executarAcao = async (tipo: 'aceitar' | 'finalizar' | 'trocar') => {
     setProcessando(true);
     try {
+      const body: any = { action: tipo };
+      
+      // Validações
+      if (tipo === 'aceitar') {
+        const tecnicoFinal = inputTecnico.trim() || session?.user?.name;
+        if (!tecnicoFinal) return alert("Digite seu nome.");
+        body.tecnico = tecnicoFinal;
+      }
+      
+      if (tipo === 'trocar') {
+        if (!inputTecnico.trim()) return alert("Digite o nome do novo técnico.");
+        body.action = 'trocar_tecnico'; 
+        body.novoTecnico = inputTecnico;
+      }
+
       await fetch(`/api/racks/${modalData.ticket.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "aceitar", tecnico: inputTecnico })
+        body: JSON.stringify(body)
       });
+      
       setModalData(null);
       setInputTecnico("");
+      setModoTroca(false);
       setTimeout(() => carregarDados(), 1000);
     } catch (error) {
-      alert("Erro ao aceitar ticket.");
-    } finally {
-      setProcessando(false);
-    }
-  };
-
-  const handleFinalizar = async () => {
-    if(!confirm("Deseja realmente finalizar este atendimento?")) return;
-    setProcessando(true);
-    try {
-      await fetch(`/api/racks/${modalData.ticket.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "finalizar" })
-      });
-      setModalData(null);
-      setTimeout(() => carregarDados(), 1000);
-    } catch (error) {
-      alert("Erro ao finalizar ticket.");
+      alert("Erro na operação.");
     } finally {
       setProcessando(false);
     }
@@ -178,10 +173,15 @@ export default function VisaoPatrimonio() {
     });
   };
 
+  // Tela de carregamento do Login
+  if (status === "loading") return <div className="min-h-screen bg-black flex items-center justify-center text-white font-bold animate-pulse">Verificando acesso...</div>;
+  if (status === "unauthenticated") return null;
+
   const ticketsAguardando = filtrarTickets("AGUARDANDO");
   const ticketsAbertos = filtrarTickets("ABERTO");
   const ticketsFinalizados = filtrarTickets("FINALIZADO");
 
+  // Componente do Card
   const RenderCard = ({ ticket }: { ticket: any }) => {
     const nomeRack = buscarValor(ticket, ['RACK']);
     const setor = buscarValor(ticket, ['SETORES ATENDIDOS', 'SETORES']);
@@ -196,13 +196,12 @@ export default function VisaoPatrimonio() {
     const abrirModal = () => {
       setModalData({
         ticket, nomeRack, setor, cor, 
-        nivel: buscarValor(ticket, ['NÍVEL', 'NIVEL']), 
-        tipo: buscarValor(ticket, ['SALA INTERNA OU CORREDOR', 'TIPO']), 
         locais: buscarValor(ticket, ['LOCAIS DE REFERENCIA', 'LOCAIS']), 
         horario, chamado: buscarValor(ticket, ['CHAMADOS ASSYST', 'CHAMADO']), 
         solicitante, atendente, status, fecham
       });
       setInputTecnico("");
+      setModoTroca(false);
     };
 
     return (
@@ -250,18 +249,34 @@ export default function VisaoPatrimonio() {
             VISÃO <span className="text-blue-500">PATRIMÔNIO</span>
           </h1>
         </div>
-        <div className="text-right flex items-center gap-3">
-          {/* BOTÃO MÁGICO PARA DESTRAVAR O SOM */}
-          <button 
-            onClick={testarSomManual}
-            className="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-3 py-1 rounded text-xs font-bold transition-all active:scale-95"
-          >
-            🔊 Testar Som
-          </button>
+        
+        <div className="flex items-center gap-4">
+          {/* Painel do Usuário (COM LOGOUT) */}
+          <div className="flex items-center gap-3 bg-gray-900/50 p-2 rounded-lg border border-gray-800">
+             <div className="text-right hidden md:block">
+               <p className="text-[10px] text-gray-400 uppercase font-bold">Logado como</p>
+               <p className="text-xs font-bold text-white">{session?.user?.name}</p>
+             </div>
+             <button onClick={() => router.push('/dashboard')} title="Dashboard" className="bg-gray-800 hover:bg-gray-700 p-2 rounded transition-colors">
+               📊
+             </button>
+             <button onClick={() => signOut()} title="Sair" className="bg-red-900/30 hover:bg-red-900/80 text-red-200 p-2 rounded transition-colors">
+               🚪
+             </button>
+          </div>
 
-          <span className="bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold text-gray-300 border border-gray-700">
-            {ticketsAguardando.length + ticketsAbertos.length} ATIVOS
-          </span>
+          {/* Botão de Som e Contador */}
+          <div className="text-right flex items-center gap-3 border-l border-gray-800 pl-4">
+            <button 
+              onClick={testarSomManual}
+              className="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-3 py-1 rounded text-xs font-bold transition-all active:scale-95"
+            >
+              🔊 Testar
+            </button>
+            <span className="bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold text-gray-300 border border-gray-700">
+              {ticketsAguardando.length + ticketsAbertos.length} ATIVOS
+            </span>
+          </div>
         </div>
       </header>
 
@@ -270,6 +285,7 @@ export default function VisaoPatrimonio() {
         <div className="text-center mt-20"><p className="animate-pulse font-bold text-gray-500">Carregando...</p></div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
+          {/* AGUARDANDO */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col">
             <h3 className="text-lg font-bold text-yellow-500 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> Aguardando ({ticketsAguardando.length})
@@ -280,6 +296,7 @@ export default function VisaoPatrimonio() {
             </div>
           </div>
 
+          {/* EM ATENDIMENTO */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col">
             <h3 className="text-lg font-bold text-blue-500 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Em Atendimento ({ticketsAbertos.length})
@@ -290,6 +307,7 @@ export default function VisaoPatrimonio() {
             </div>
           </div>
 
+          {/* FINALIZADOS */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col opacity-80">
             <h3 className="text-lg font-bold text-gray-400 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-gray-500"></span> Finalizados ({ticketsFinalizados.length})
@@ -307,6 +325,7 @@ export default function VisaoPatrimonio() {
           <div className="bg-gray-900 border border-gray-700 w-full max-w-xl rounded-2xl shadow-2xl p-6 relative animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
             <button onClick={() => setModalData(null)} className="absolute top-4 right-4 text-gray-400 hover:text-white text-2xl">&times;</button>
 
+            {/* Cabeçalho do Modal */}
             <div className="flex items-center gap-4 mb-6">
               <div className={`h-16 w-3 rounded-full ${getCorCSS(modalData.cor).split(' ')[0]}`}></div>
               <div>
@@ -315,6 +334,7 @@ export default function VisaoPatrimonio() {
               </div>
             </div>
 
+            {/* Dados do Ticket */}
             <div className="grid grid-cols-2 gap-4 mb-6 bg-gray-800/50 p-4 rounded-xl border border-gray-700">
                <div>
                  <p className="text-gray-500 text-xs font-bold uppercase">Solicitante (CATI)</p>
@@ -330,14 +350,17 @@ export default function VisaoPatrimonio() {
                </div>
             </div>
 
+            {/* ÁREA DE AÇÃO */}
             <div className="pt-4 border-t border-gray-800">
+              
+              {/* CASO 1: AGUARDANDO (Aceitar) */}
               {modalData.status?.toUpperCase().trim() === "AGUARDANDO" && (
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-bold text-yellow-500 mb-2 uppercase">Atribuir Técnico Patrimônio</label>
                     <input 
                       type="text" 
-                      placeholder="Quem vai atender?"
+                      placeholder={`Nome (Padrão: ${session?.user?.name})`}
                       className="w-full bg-gray-800 border border-gray-600 rounded-lg p-3 text-white focus:outline-none focus:border-yellow-500"
                       value={inputTecnico}
                       onChange={(e) => setInputTecnico(e.target.value)}
@@ -345,8 +368,8 @@ export default function VisaoPatrimonio() {
                     />
                   </div>
                   <button 
-                    onClick={handleAceitar}
-                    disabled={processando || !inputTecnico}
+                    onClick={() => executarAcao('aceitar')}
+                    disabled={processando}
                     className="w-full bg-yellow-600 hover:bg-yellow-500 disabled:opacity-50 text-white font-black uppercase py-4 rounded-xl shadow-lg transition-all active:scale-95"
                   >
                     {processando ? "Iniciando..." : "INICIAR ATENDIMENTO"}
@@ -354,21 +377,49 @@ export default function VisaoPatrimonio() {
                 </div>
               )}
 
+              {/* CASO 2: ABERTO (Finalizar OU Trocar) */}
               {modalData.status?.toUpperCase().trim() === "ABERTO" && (
                 <div className="space-y-4">
-                  <div className="bg-blue-900/20 border border-blue-900 p-3 rounded-lg text-center">
-                    <p className="text-blue-400 text-sm">Em atendimento por: <strong className="text-white text-lg block mt-1">{modalData.atendente || "Patrimônio"}</strong></p>
-                  </div>
-                  <button 
-                    onClick={handleFinalizar}
-                    disabled={processando}
-                    className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black uppercase py-4 rounded-xl shadow-lg transition-all active:scale-95"
-                  >
-                    {processando ? "Finalizando..." : "FINALIZAR ATENDIMENTO"}
-                  </button>
+                  {!modoTroca ? (
+                    <>
+                      <div className="bg-blue-900/20 border border-blue-900 p-3 rounded-lg text-center">
+                        <p className="text-blue-400 text-sm">Em atendimento por: <strong className="text-white text-lg block mt-1">{modalData.atendente || "Patrimônio"}</strong></p>
+                      </div>
+                      
+                      <button 
+                        onClick={() => executarAcao('finalizar')}
+                        disabled={processando}
+                        className="w-full bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white font-black uppercase py-4 rounded-xl shadow-lg transition-all active:scale-95"
+                      >
+                        {processando ? "Finalizando..." : "FINALIZAR ATENDIMENTO"}
+                      </button>
+
+                      <button onClick={() => setModoTroca(true)} className="w-full text-center text-xs text-gray-400 hover:text-white underline">
+                        Transferir responsabilidade para outro técnico
+                      </button>
+                    </>
+                  ) : (
+                    // MODO TROCA ATIVO
+                    <div className="bg-gray-800 border border-gray-600 p-4 rounded-xl animate-in zoom-in">
+                      <p className="text-yellow-500 text-xs font-bold uppercase mb-2">Troca de Responsável</p>
+                      <input 
+                        type="text" 
+                        placeholder="Nome do Novo Técnico"
+                        className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-white mb-3 focus:border-yellow-500 outline-none"
+                        value={inputTecnico}
+                        onChange={(e) => setInputTecnico(e.target.value)}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                         <button onClick={() => setModoTroca(false)} className="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm font-bold py-2 rounded-lg">Cancelar</button>
+                         <button onClick={() => executarAcao('trocar')} className="flex-1 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-bold py-2 rounded-lg">Confirmar Troca</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
+              {/* CASO 3: FINALIZADO */}
               {modalData.status?.toUpperCase().trim() === "FINALIZADO" && (
                 <div className="text-center p-4 bg-gray-800 rounded-xl">
                   <p className="text-green-500 font-bold uppercase text-lg">Atendimento Concluído</p>

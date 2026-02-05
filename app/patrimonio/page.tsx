@@ -6,26 +6,25 @@ export default function VisaoPatrimonio() {
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Controle do Modal e Inputs
   const [modalData, setModalData] = useState<any | null>(null);
-  const [inputTecnico, setInputTecnico] = useState(""); // Nome do atendente do patrimônio
+  const [inputTecnico, setInputTecnico] = useState("");
   const [processando, setProcessando] = useState(false);
 
-  // --- CONTROLE DE NOTIFICAÇÕES E SOM ---
+  // --- CONTROLE DE NOTIFICAÇÕES ---
   const [showToast, setShowToast] = useState(false); 
   const prevAguardandoCount = useRef(0);
   const isFirstLoad = useRef(true);
+  
+  // Referência para o player de áudio
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Som de notificação
-  const notificationSound = typeof Audio !== "undefined" 
-    ? new Audio("https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3") 
-    : null;
+  // Som de Beep curto (Base64) - Funciona sem arquivo externo
+  const SOM_BEEP = "data:audio/mp3;base64,//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq//uQxAAAAANIAAAAAExBTUUzLjEwMKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq";
 
   // --- FUNÇÕES AUXILIARES ---
   const normalizar = (str: string) => 
     str ? str.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s/g, "") : "";
 
-  // Busca valores ignorando espaços e acentos nas chaves
   const buscarValor = (item: any, chavesPossiveis: string[]) => {
     if (!item) return "";
     const chavesItem = Object.keys(item);
@@ -48,30 +47,44 @@ export default function VisaoPatrimonio() {
     return mapa[corNome?.toUpperCase()] || mapa["CINZA"];
   };
 
-  // --- SOLICITAR PERMISSÃO DE NOTIFICAÇÃO ---
+  // --- CONFIGURAÇÃO DO ÁUDIO E PERMISSÕES ---
   useEffect(() => {
+    // Carrega o som na memória assim que a tela abre
+    audioRef.current = new Audio(SOM_BEEP);
+    audioRef.current.volume = 1.0;
+
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
   }, []);
 
-  // --- LÓGICA DE ALERTA ---
+  // --- FUNÇÃO DE TESTE MANUAL ---
+  const testarSomManual = () => {
+    if (audioRef.current) {
+      audioRef.current.play()
+        .then(() => console.log("Som tocou! Navegador liberado."))
+        .catch(e => alert("O navegador bloqueou o som. Tente clicar na página novamente. Erro: " + e.message));
+    }
+  };
+
+  // --- LÓGICA DE ALERTA AUTOMÁTICO ---
   const dispararAlerta = (qtdNovos: number) => {
     // 1. Toca Som
-    if (notificationSound) {
-      notificationSound.volume = 0.6;
-      notificationSound.play().catch(e => console.log("Som bloqueado pelo navegador"));
+    if (audioRef.current) {
+      // Reinicia o som caso ele esteja tocando
+      audioRef.current.currentTime = 0;
+      audioRef.current.play().catch(e => {
+        console.warn("Som automático bloqueado. Usuário precisa interagir.", e);
+      });
     }
 
-    // 2. Verifica se a página está visível
+    // 2. Notificação Visual
     const isPageVisible = document.visibilityState === "visible";
     
     if (isPageVisible) {
-      // Mostra Toast interno
       setShowToast(true);
       setTimeout(() => setShowToast(false), 5000);
     } else {
-      // Manda notificação do Sistema Operacional
       if ("Notification" in window && Notification.permission === "granted") {
         const notification = new Notification("🚨 Novo Chamado Patrimônio!", {
           body: `Atenção: Existem ${qtdNovos} chamados aguardando.`,
@@ -91,14 +104,14 @@ export default function VisaoPatrimonio() {
         const listaInvertida = data.reverse();
         setTickets(listaInvertida);
 
-        // Conta quantos estão aguardando AGORA
+        // Conta quantos estão aguardando
         const aguardandoAgora = listaInvertida.filter((t: any) => {
            const s = buscarValor(t, ['STATUS']);
            const r = buscarValor(t, ['RACK']);
            return r && s && s.toUpperCase().trim() === "AGUARDANDO";
         }).length;
 
-        // Se aumentou o número de tickets aguardando, dispara alerta
+        // Se aumentou o número de tickets, dispara alerta
         if (!isFirstLoad.current && aguardandoAgora > prevAguardandoCount.current) {
            dispararAlerta(aguardandoAgora);
         }
@@ -119,7 +132,6 @@ export default function VisaoPatrimonio() {
   }, []);
 
   // --- AÇÕES DO SISTEMA ---
-  
   const handleAceitar = async () => {
     if (!inputTecnico.trim()) return alert("Por favor, digite seu nome (Técnico Patrimônio).");
     setProcessando(true);
@@ -127,12 +139,10 @@ export default function VisaoPatrimonio() {
       await fetch(`/api/racks/${modalData.ticket.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        // Envia o técnico que vai para a Coluna N (Atendente)
         body: JSON.stringify({ action: "aceitar", tecnico: inputTecnico })
       });
       setModalData(null);
       setInputTecnico("");
-      // Pequeno delay para a planilha processar
       setTimeout(() => carregarDados(), 1000);
     } catch (error) {
       alert("Erro ao aceitar ticket.");
@@ -159,39 +169,27 @@ export default function VisaoPatrimonio() {
     }
   };
 
-  // --- FILTROS DE STATUS ---
-  const ticketsAguardando = tickets.filter(t => {
-    const s = buscarValor(t, ['STATUS']);
-    const r = buscarValor(t, ['RACK']);
-    return r && s && s.toUpperCase().trim() === "AGUARDANDO";
-  });
+  // --- FILTROS ---
+  const filtrarTickets = (statusAlvo: string) => {
+    return tickets.filter(t => {
+      const s = buscarValor(t, ['STATUS']);
+      const r = buscarValor(t, ['RACK']);
+      return r && s && s.toUpperCase().trim() === statusAlvo;
+    });
+  };
 
-  const ticketsAbertos = tickets.filter(t => {
-    const s = buscarValor(t, ['STATUS']);
-    const r = buscarValor(t, ['RACK']);
-    return r && s && s.toUpperCase().trim() === "ABERTO";
-  });
+  const ticketsAguardando = filtrarTickets("AGUARDANDO");
+  const ticketsAbertos = filtrarTickets("ABERTO");
+  const ticketsFinalizados = filtrarTickets("FINALIZADO");
 
-  const ticketsFinalizados = tickets.filter(t => {
-    const s = buscarValor(t, ['STATUS']);
-    const r = buscarValor(t, ['RACK']);
-    return r && s && s.toUpperCase().trim() === "FINALIZADO";
-  });
-
-  // --- RENDERIZAÇÃO DO CARD ---
   const RenderCard = ({ ticket }: { ticket: any }) => {
     const nomeRack = buscarValor(ticket, ['RACK']);
     const setor = buscarValor(ticket, ['SETORES ATENDIDOS', 'SETORES']);
     const cor = buscarValor(ticket, ['COR']);
     const horario = buscarValor(ticket, ['HORÁRIO DE ABERTURA', 'HORAABERTURA']);
     const fecham = buscarValor(ticket, ['HORÁRIO DE FECHAMENTO', 'HORAFECHAMENTO']);
-    
-    // SOLICITANTE: Coluna H (Quem abriu)
     const solicitante = buscarValor(ticket, ['TÉCNICO CATI', 'TECNICOCATI', 'SOLICITANTE']);
-    
-    // ATENDENTE: Coluna N (Quem aceitou)
     const atendente = buscarValor(ticket, ['ATENDENTE PATRIMÔNIO', 'ATENDENTEPATRIMONIO', 'ATENDENTE']);
-    
     const status = buscarValor(ticket, ['STATUS']);
     const corCSS = getCorCSS(cor || "Cinza");
 
@@ -208,42 +206,26 @@ export default function VisaoPatrimonio() {
     };
 
     return (
-      <div 
-        onClick={abrirModal}
-        className={`cursor-pointer transform hover:scale-[1.02] transition-all duration-200 relative overflow-hidden rounded-2xl border-l-[12px] shadow-lg ${corCSS} p-4 mb-4 min-h-[140px] flex flex-col justify-between`}
-      >
+      <div onClick={abrirModal} className={`cursor-pointer transform hover:scale-[1.02] transition-all duration-200 relative overflow-hidden rounded-2xl border-l-[12px] shadow-lg ${corCSS} p-4 mb-4 min-h-[140px] flex flex-col justify-between`}>
         <div className="flex justify-between items-start">
           <h2 className="text-3xl font-black text-white drop-shadow-md tracking-tighter">{nomeRack}</h2>
-          
-          {/* BADGE DE IDENTIFICAÇÃO */}
           {atendente ? (
-             // Se tem atendente, mostra ele (Azul)
              <div className="flex flex-col items-end">
                <span className="text-[9px] text-white/80 uppercase font-bold">Atendendo</span>
-               <span className="text-[10px] bg-blue-900/90 border border-blue-400 px-2 py-1 rounded text-white font-bold truncate max-w-[90px]">
-                 {atendente.split(' ')[0]}
-               </span>
+               <span className="text-[10px] bg-blue-900/90 border border-blue-400 px-2 py-1 rounded text-white font-bold truncate max-w-[90px]">{atendente.split(' ')[0]}</span>
              </div>
           ) : (
-             // Se não tem, mostra quem pediu (Cinza/Transparente)
              <div className="flex flex-col items-end">
                <span className="text-[9px] text-white/60 uppercase font-bold">Solicitado por</span>
-               <span className="text-[10px] bg-black/40 px-2 py-1 rounded text-white/80 font-bold truncate max-w-[90px]">
-                 {solicitante ? solicitante.split(' ')[0] : 'CATI'}
-               </span>
+               <span className="text-[10px] bg-black/40 px-2 py-1 rounded text-white/80 font-bold truncate max-w-[90px]">{solicitante ? solicitante.split(' ')[0] : 'CATI'}</span>
              </div>
           )}
         </div>
-        
         <div className="space-y-1 mt-2">
             <p className="text-xs font-bold text-white/90 uppercase bg-black/20 p-1 rounded inline-block">{setor || "..."}</p>
             <div className="flex justify-between text-xs items-center mt-2">
-              <span className="text-white/80 font-bold uppercase text-[10px]">
-                {status === "FINALIZADO" ? "Fechou:" : "Abriu:"}
-              </span>
-              <span className="text-white font-mono font-bold text-xs bg-black/30 px-2 py-1 rounded">
-                {status === "FINALIZADO" ? fecham : horario}
-              </span>
+              <span className="text-white/80 font-bold uppercase text-[10px]">{status === "FINALIZADO" ? "Fechou:" : "Abriu:"}</span>
+              <span className="text-white font-mono font-bold text-xs bg-black/30 px-2 py-1 rounded">{status === "FINALIZADO" ? fecham : horario}</span>
             </div>
         </div>
       </div>
@@ -268,7 +250,15 @@ export default function VisaoPatrimonio() {
             VISÃO <span className="text-blue-500">PATRIMÔNIO</span>
           </h1>
         </div>
-        <div className="text-right">
+        <div className="text-right flex items-center gap-3">
+          {/* BOTÃO MÁGICO PARA DESTRAVAR O SOM */}
+          <button 
+            onClick={testarSomManual}
+            className="bg-gray-800 hover:bg-gray-700 border border-gray-600 text-gray-300 px-3 py-1 rounded text-xs font-bold transition-all active:scale-95"
+          >
+            🔊 Testar Som
+          </button>
+
           <span className="bg-gray-800 px-3 py-1 rounded-lg text-xs font-bold text-gray-300 border border-gray-700">
             {ticketsAguardando.length + ticketsAbertos.length} ATIVOS
           </span>
@@ -280,8 +270,6 @@ export default function VisaoPatrimonio() {
         <div className="text-center mt-20"><p className="animate-pulse font-bold text-gray-500">Carregando...</p></div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-140px)]">
-          
-          {/* COLUNA 1: AGUARDANDO */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col">
             <h3 className="text-lg font-bold text-yellow-500 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span> Aguardando ({ticketsAguardando.length})
@@ -292,7 +280,6 @@ export default function VisaoPatrimonio() {
             </div>
           </div>
 
-          {/* COLUNA 2: ABERTOS */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col">
             <h3 className="text-lg font-bold text-blue-500 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></span> Em Atendimento ({ticketsAbertos.length})
@@ -303,7 +290,6 @@ export default function VisaoPatrimonio() {
             </div>
           </div>
 
-          {/* COLUNA 3: FINALIZADOS */}
           <div className="bg-gray-900/50 rounded-2xl p-4 border border-gray-800 flex flex-col opacity-80">
             <h3 className="text-lg font-bold text-gray-400 mb-4 flex items-center gap-2 uppercase tracking-wide border-b border-gray-800 pb-2">
               <span className="w-2 h-2 rounded-full bg-gray-500"></span> Finalizados ({ticketsFinalizados.length})
@@ -344,10 +330,7 @@ export default function VisaoPatrimonio() {
                </div>
             </div>
 
-            {/* AÇÕES DINÂMICAS */}
             <div className="pt-4 border-t border-gray-800">
-              
-              {/* STATUS AGUARDANDO -> Aceitar */}
               {modalData.status?.toUpperCase().trim() === "AGUARDANDO" && (
                 <div className="space-y-4">
                   <div>
@@ -371,7 +354,6 @@ export default function VisaoPatrimonio() {
                 </div>
               )}
 
-              {/* STATUS ABERTO -> Finalizar */}
               {modalData.status?.toUpperCase().trim() === "ABERTO" && (
                 <div className="space-y-4">
                   <div className="bg-blue-900/20 border border-blue-900 p-3 rounded-lg text-center">
@@ -387,7 +369,6 @@ export default function VisaoPatrimonio() {
                 </div>
               )}
 
-              {/* STATUS FINALIZADO */}
               {modalData.status?.toUpperCase().trim() === "FINALIZADO" && (
                 <div className="text-center p-4 bg-gray-800 rounded-xl">
                   <p className="text-green-500 font-bold uppercase text-lg">Atendimento Concluído</p>

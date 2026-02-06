@@ -1,0 +1,54 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Tabela de Inventário (Os dados fixos dos Racks)
+model Rack {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique // Ex: 50C1
+  setor     String
+  cor       String
+  nivel     String
+  tipo      String
+  locais    String
+  createdAt DateTime @default(now())
+}
+
+// Tabela de Chamados
+model Ticket {
+  id              Int      @id @default(autoincrement())
+  rackNome        String
+  setor           String
+  nivel           String
+  tipo            String
+  locais          String
+  chamadoAssyst   String
+  solicitante     String
+  manutencao      Boolean  @default(false)
+  horarioAbertura String
+  horaFechamento  String?
+  cor             String
+  status          String   @default("AGUARDANDO") // AGUARDANDO, ABERTO, FINALIZADO
+  atendente       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  logs            Log[]
+}
+
+// Tabela de Logs (Histórico)
+model Log {
+  id        Int      @id @default(autoincrement())
+  usuario   String
+  acao      String
+  detalhes  String
+  dataHora  DateTime @default(now())
+  
+  ticketId  Int
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+}

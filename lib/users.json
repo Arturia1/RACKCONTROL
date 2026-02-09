@@ -1,0 +1,6 @@
+{
+  "users": [
+    { "id": "1", "username": "admin", "password": "password123", "role": "ADMIN_RACKCONTROL", "name": "Usuário Admin" },
+    { "id": "2", "username": "tecnico", "password": "password123", "role": "USER_RACKCONTROL", "name": "usuário solicitante" }
+  ]
+}

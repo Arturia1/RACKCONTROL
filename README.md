@@ -1,77 +1,59 @@
-# 🗄️ RACKCONTROL
+🚀 RACKCONTROL: Gestão de Infraestrutura em Tempo Real
+Status do Projeto: Versão para estudos e portfólio (Sanitizada conforme diretrizes da LGPD).
 
-![Status](https://img.shields.io/badge/Status-Em_Desenvolvimento-blue?style=for-the-badge)
-![Tech](https://img.shields.io/badge/Next.js_14-000000?style=for-the-badge&logo=next.js&logoColor=white)
-![Google Sheets](https://img.shields.io/badge/Google_Sheets_API-34A853?style=for-the-badge&logo=google-sheets&logoColor=white)
-![Tailwind](https://img.shields.io/badge/Tailwind_CSS-38B2AC?style=for-the-badge&logo=tailwind-css&logoColor=white)
+📖 Sobre o Projeto
+O RACKCONTROL é uma solução full-stack desenvolvida para resolver um problema comum em centros de dados e infraestruturas de rede: a falta de visibilidade em tempo real sobre manutenções físicas em racks.
 
-> **Sistema de Gestão de Chamados para Data Centers e Infraestrutura de TI.** > Desenvolvido para rodar localmente ou em intranet, utilizando o **Google Sheets** como Banco de Dados em Tempo Real.
+O sistema permite que técnicos de campo abram chamados instantâneos enquanto a equipe de Patrimônio monitora uma Dashboard Kanban que se atualiza automaticamente, utilizando o Google Sheets como um Banco de Dados Relacional e Gratuito.
 
----
+✨ Funcionalidades Principais
+🛡️ Sistema de Autenticação & RBAC: Diferentes níveis de acesso (Admin Rackcontrol, Solicitante, Admin Patrimônio, Visualizador) utilizando NextAuth.js.
 
-## 🚀 Sobre o Projeto
+📊 Kanban em Tempo Real: Painel dinâmico que monitora o status dos chamados (Aguardando, Em Atendimento, Finalizado, Cancelado).
 
-O **RackControl** foi criado para substituir planilhas manuais e sistemas complexos de abertura de chamados. A grande inovação deste projeto é a **eliminação de bancos de dados tradicionais** (MySQL/Postgres).
+🔊 Alerta Sonoro Inteligente: Notificação em áudio e Push Notification para novos chamados na fila, garantindo tempo de resposta mínimo.
 
-Toda a persistência de dados (chamados, logs, inventário) é feita diretamente em uma **Planilha do Google Sheets**, o que permite:
-1.  **Auditoria Fácil:** Os gestores podem ver os dados brutos no Excel/Sheets a qualquer momento.
-2.  **Zero Infraestrutura de DB:** Não precisa instalar Docker, SQL Server ou pagar hospedagem de banco.
-3.  **Atualização em Tempo Real:** O painel Kanban se atualiza automaticamente.
+📝 Auditoria Imutável: Registro detalhado de logs em aba separada, com observações técnicas que se tornam imutáveis após o encerramento do ticket.
 
----
+📑 Integração Inteligente: Busca automática de metadados (Setor, Nível, Localização) baseada no ID do Rack via Google Sheets API.
 
-## ✨ Funcionalidades
+🛠️ Stack Tecnológica
+Framework: Next.js 15+ (App Router)
 
-* ✅ **Abertura Inteligente:** Ao digitar o nome do Rack (ex: `50C1`), o sistema busca automaticamente o Setor, Nível (Andar) e a Cor de identificação.
-* 📊 **Kanban Board:** Visualização clara de chamados `Aguardando`, `Em Atendimento` e `Finalizados`.
-* 🔔 **Alertas Sonoros:** Notificação de áudio para a equipe quando um novo chamado chega.
-* 🛡️ **Proteção de Dados:** O sistema grava novos chamados de forma segura (calculando a próxima linha vazia) para evitar sobrescrever dados antigos.
-* 📝 **Logs de Auditoria:** Histórico automático de quem aceitou, trocou ou finalizou um chamado.
+Estilização: Tailwind CSS
 
----
+Autenticação: NextAuth.js (Auth.js)
 
-## ⚙️ Estrutura da Planilha (Importante)
+Persistência: Google Sheets API v4
 
-Para o sistema funcionar, você precisa de uma Planilha no Google com **3 Abas** configuradas exatamente nesta ordem de colunas:
+Linguagem: TypeScript
 
-### 1. Aba `DB` (Inventário)
-*Base de conhecimento dos Racks.*
-* **A:** Nome do Rack (Ex: `50C1`)
-* **B:** Setor (Ex: `FINANCEIRO`)
-* **C:** Cor (Ex: `AZUL`)
-* **D:** Nível/Andar (Ex: `TÉRREO`)
-* **E:** Tipo (Ex: `RACK FECHADO`)
-* **F:** Locais (Ex: `SALA 101`)
+🏛️ Arquitetura e Decisões Técnicas
+A escolha do Google Sheets como Backend foi uma decisão estratégica para este caso de uso, visando:
 
-### 2. Aba `RACKS` (Chamados)
-*Onde os tickets são gravados. O sistema começa a ler/gravar a partir da **Linha 37** (para preservar cabeçalhos ou dados fixos acima).*
-* **A:** Rack
-* **B:** Setor
-* **C:** Nível
-* **D:** Tipo
-* **E:** Locais
-* **F:** Chamado (Número Externo)
-* **G:** Solicitante
-* **H:** Manutenção Predial? (SIM/NÃO)
-* **I:** Hora de Abertura
-* **J:** Cor
-* **K:** (Vazio/Reservado)
-* **L:** Hora Fechamento
-* **M:** Status (`AGUARDANDO` / `ABERTO` / `FINALIZADO`)
-* **N:** Atendente
+Custo Zero: Eliminação de custos de hospedagem de banco de dados.
 
-### 3. Aba `LOGS`
-*Histórico de ações.*
-* **A:** Data/Hora
-* **B:** Usuário
-* **C:** Ação
-* **D:** Detalhes
+Acessibilidade de Dados: Permite que gestores sem acesso ao sistema visualizem relatórios brutos diretamente na planilha.
 
----
+Segurança (LGPD): Implementação de uma camada de API (Route Handlers) que filtra e sanitiza os dados antes de chegarem ao frontend, garantindo que informações sensíveis nunca sejam expostas.
 
-## 🔧 Instalação e Configuração
+🚀 Como Executar o Projeto
+Clone o repositório:
 
-### 1. Clone o repositório
-```bash
-git clone [https://github.com/SEU-USUARIO/rackcontrol.git](https://github.com/SEU-USUARIO/rackcontrol.git)
-cd rackcontrol
+Bash
+git clone https://github.com/seu-usuario/rackcontrol.git
+Instale as dependências:
+
+Bash
+npm install
+Configure as Variáveis de Ambiente: Crie um arquivo .env.local baseado no .env.example fornecido no repositório.
+
+Inicie o servidor de desenvolvimento:
+
+Bash
+npm run dev
+⚖️ LGPD e Privacidade
+Este repositório é uma versão de estudo. Nenhum dado real de infraestrutura, nomes de funcionários ou chaves de API privadas foram incluídos. Os dados contidos no arquivo users.json e na planilha de exemplo são meramente ilustrativos (Dummy Data).
+
+👤 Autor
+Arturia Lima Queiroz Desenvolvedora Backend & Especialista em Segurança 📍 Fortaleza, Ceará
